@@ -1,5 +1,5 @@
-from gan_class.big_gan_class import Generator
-from gan_class.gan_preprocess import preprocess_customer_data
+from GAN_advanced_task_class.big_gan_class import Generator
+from GAN_advanced_task_class.gan_preprocess import preprocess_customer_data
 
 """
 Implementations for neural discriminator training

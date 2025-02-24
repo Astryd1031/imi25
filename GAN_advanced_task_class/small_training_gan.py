@@ -1,6 +1,6 @@
 
-from gan_class.gan_preprocess import preprocess_customer_data
-from gan_class.small_gan_class import Generator
+from GAN_advanced_task_class.gan_preprocess import preprocess_customer_data
+from GAN_advanced_task_class.small_gan_class import Generator
 
 """"
 def ksmall_training(df, save_path="customer_foundation_model.csv"):

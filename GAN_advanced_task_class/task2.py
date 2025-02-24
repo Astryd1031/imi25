@@ -1,8 +1,8 @@
 import os
 import time
 import pandas as pd
-from gan_class.big_training_gan import big_training
-from gan_class.small_training_gan import small_training
+from GAN_advanced_task_class.big_training_gan import big_training
+from GAN_advanced_task_class.small_training_gan import small_training
 """
 This is the code for customer foundation model representation task. 
 Please note that the csv file will be created
