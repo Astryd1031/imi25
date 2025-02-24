@@ -120,3 +120,5 @@ if __name__ == "__main__":
     start_time = time.time()
     compute_gan_scores()
     print(f"Completed in {time.time() - start_time:.2f} seconds")
+    with open('customer_foundation_model.csv', 'a') as file:
+        file.write('\n')
