@@ -83,11 +83,13 @@ class Generator(nn.Module):
         return x
 
 
+
 class Discriminator(nn.Module):
     """
     Discriminator Model
     -------------------
-    The Discriminator evaluates whether a transaction is real or synthetic.
+    The Discriminator evaluates whether a transaction is real or synthetic
+    and produces embeddings for each transaction.
 
     Parameters:
     -----------
@@ -98,38 +100,29 @@ class Discriminator(nn.Module):
     -------------
     - Input: Concatenation of transaction data and transaction type.
     - Three fully connected layers with LeakyReLU activation.
-    - Sigmoid activation at the output for binary classification.
-
-    Forward Pass:
-    -------------
-    - Accepts transaction data and transaction types.
-    - Passes through three layers.
-    - Outputs probability score indicating whether the transaction is real or fake.
+    - Outputs:
+      1. Probability score (real/fake classification).
+      2. Intermediate 128-dim embedding.
 
     """
+
     def __init__(self, input_dim, transaction_type_dim):
         super(Discriminator, self).__init__()
         self.fc1 = nn.Linear(input_dim + transaction_type_dim, 128)
         self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 1)
+        self.fc_embedding = nn.Linear(64, 128)  # Embedding output layer
+        self.fc3 = nn.Linear(128, 1)  # Final probability layer
         self.leaky_relu = nn.LeakyReLU(0.2)
         self.sigmoid = nn.Sigmoid()
 
-    def forward(self, data, transaction_types):
-        """
-        Forward pass of the Discriminator.
-
-        Inputs:
-        -------
-        - data (torch.Tensor): Transaction data of shape (batch_size, input_dim).
-        - transaction_types (torch.Tensor): Encoded transaction types of shape (batch_size, transaction_type_dim).
-
-        Returns:
-        --------
-        - Probability score (torch.Tensor) indicating real (1) or fake (0) transaction.
-        """
-        x = torch.cat((data, transaction_types), dim=1)  # Ensure correct concatenation
+    def forward(self, data, transaction_types, return_embedding=False):
+        x = torch.cat((data, transaction_types), dim=1)
         x = self.leaky_relu(self.fc1(x))
         x = self.leaky_relu(self.fc2(x))
-        x = self.sigmoid(self.fc3(x))  # Probability score (0 to 1)
-        return x
+        embedding = self.fc_embedding(x)  # Compute embedding
+        probability = self.sigmoid(self.fc3(embedding))  # Probability score
+
+        if return_embedding:
+            return {"score": probability, "embedding": embedding}  # Return as dictionary
+        return {"score": probability}  # Always return a dictionary
+

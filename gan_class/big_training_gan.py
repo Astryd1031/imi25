@@ -1,126 +1,209 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-from collections import defaultdict
-from gan_class.big_gan_class import Generator, Discriminator
+from gan_class.big_gan_class import Generator
 from gan_class.gan_preprocess import preprocess_customer_data
-import numpy as np
 
-def big_training(df):
-    """
-    Trains a GAN-based anomaly detection model on preprocessed customer transaction data
-    to assess behavioral patterns and detect potential AML (Anti-Money Laundering) risks.
+"""
+Implementations for neural discriminator training
+def kbig_training(df, csv_path="customer_foundation_model.csv"):
+    
+    Trains a GAN-based anomaly detection model and appends 128D customer embeddings to a CSV file.
 
     Parameters:
     df (pd.DataFrame): DataFrame containing raw transaction data before preprocessing.
+    csv_path (str): Path to the CSV file where embeddings will be appended.
 
     Returns:
-    list[dict]: A list of dictionaries, each containing a customer's ID and their calculated AML risk score.
-    """
-    # Load preprocessed transactions data
+    pd.DataFrame: DataFrame with appended customer embeddings.
+    
     transactions = preprocess_customer_data(df)
 
-    # Define boolean columns representing transaction channels
     boolean_columns = ['Transaction_channel_Abm', 'Transaction_channel_Card', 'Transaction_channel_Cheque',
                        'Transaction_channel_EFT', 'Transaction_channel_EMT', 'Transaction_channel_Wire']
-
-    # Extract numeric columns from the dataset
     numeric_columns = transactions.select_dtypes(include=[np.number]).columns.tolist()
 
-    # Set up the device (GPU if available, otherwise CPU)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    # Hyperparameters
-    noise_dim = 100  # Dimensionality of the random noise vector
-    transaction_type_dim = 6  # Number of transaction channel types
-    output_dim = len(numeric_columns)  # Number of features in the dataset
-    num_epochs = 100  # Number of training epochs
-    batch_size = 64  # Size of each batch during training
-    learning_rate = 0.0002  # Learning rate for optimizers
-    beta1 = 0.5  # Beta1 parameter for Adam optimizer
-    input_dim = noise_dim + transaction_type_dim  # Generator input dimension
+    noise_dim = 100
+    transaction_type_dim = 6
+    output_dim = len(numeric_columns)
+    num_epochs = 100
+    batch_size = 64
+    learning_rate = 0.0002
+    beta1 = 0.5
+    input_dim = noise_dim + transaction_type_dim
 
-    # Initialize the Generator and Discriminator models
     generator = Generator(noise_dim, transaction_type_dim, output_dim).to(device)
     discriminator = Discriminator(output_dim, transaction_type_dim).to(device)
 
-    # Set up Adam optimizers
     optimizer_g = optim.Adam(generator.parameters(), lr=learning_rate, betas=(beta1, 0.999))
     optimizer_d = optim.Adam(discriminator.parameters(), lr=learning_rate, betas=(beta1, 0.999))
 
-    # Define the Binary Cross-Entropy Loss function
     criterion = nn.BCELoss()
 
-    # Dictionary to track anomalies per customer
-    customer_anomalies = defaultdict(lambda: {'anomalous': 0, 'total': 0})
+    customer_embeddings = defaultdict(list)
 
-    # Training loop
     for epoch in range(num_epochs):
-        d_loss, g_loss = 0.0, 0.0  # Track losses
-        total_anomalous_transactions, total_transactions = 0, 0  # Track anomalies
-
-        # Iterate over batches of transactions
         for i in range(0, len(transactions), batch_size):
             end_idx = min(i + batch_size, len(transactions))
             current_batch_size = end_idx - i
-
-            # Skip batches that do not match the expected batch size
             if current_batch_size != batch_size:
                 continue
 
-            # Prepare real transaction data and transaction types
             real_data = torch.tensor(transactions.iloc[i:end_idx][numeric_columns].values, dtype=torch.float32).to(device)
             transaction_types = torch.tensor(transactions.iloc[i:end_idx][boolean_columns].values, dtype=torch.float32).to(device)
 
-            # Generate synthetic data
             z = torch.randn(current_batch_size, noise_dim).to(device)
             fake_data = generator(z, transaction_types)
 
-            # Train Discriminator
             optimizer_d.zero_grad()
-            real_output = discriminator(real_data, transaction_types)
+            real_output = discriminator(real_data, transaction_types, return_embedding=True)
             fake_output = discriminator(fake_data.detach(), transaction_types)
-            real_loss = criterion(real_output, torch.ones(current_batch_size, 1).to(device))
-            fake_loss = criterion(fake_output, torch.zeros(current_batch_size, 1).to(device))
-            d_loss_batch = real_loss + fake_loss
-            d_loss_batch.backward()
-            optimizer_d.step()
-            d_loss += d_loss_batch.item()
 
-            # Train Generator
+            real_loss = criterion(real_output["score"], torch.ones(current_batch_size, 1).to(device))
+            fake_loss = criterion(fake_output["score"], torch.zeros(current_batch_size, 1).to(device))
+            d_loss = real_loss + fake_loss
+            d_loss.backward()
+            optimizer_d.step()
+
             optimizer_g.zero_grad()
             fake_output = discriminator(fake_data, transaction_types)
-            g_loss_batch = criterion(fake_output, torch.ones(current_batch_size, 1).to(device))
-            g_loss_batch.backward()
+            g_loss = criterion(fake_output["score"], torch.ones(current_batch_size, 1).to(device))
+            g_loss.backward()
             optimizer_g.step()
-            g_loss += g_loss_batch.item()
 
-            # Anomaly detection using discriminator scores
-            real_probabilities = torch.sigmoid(real_output)
-            anomaly_threshold = real_probabilities.mean() - 2 * real_probabilities.std()
-            anomalous_transactions = real_probabilities < anomaly_threshold
-
-            # Update anomaly statistics
-            total_anomalous_transactions += anomalous_transactions.sum().item()
-            total_transactions += real_data.size(0)
-
-            # Aggregate anomalies per customer
+            embeddings = real_output["embedding"].detach().cpu().numpy()
             for j in range(current_batch_size):
                 customer_id = transactions.iloc[i + j]['customer_id']
-                if anomalous_transactions[j]:
-                    customer_anomalies[customer_id]['anomalous'] += 1
-                customer_anomalies[customer_id]['total'] += 1
+                customer_embeddings[customer_id].append(embeddings[j])
 
-        # Compute average losses for the epoch
-        d_loss /= (len(transactions) // batch_size)
-        g_loss /= (len(transactions) // batch_size)
+    final_embeddings = {cid: np.mean(np.vstack(embeds), axis=0) for cid, embeds in customer_embeddings.items()}
+    embeddings_df = pd.DataFrame.from_dict(final_embeddings, orient='index')
 
-        # Compute overall anomaly rate
-        anomalous_percentage = total_anomalous_transactions / total_transactions
-        aml_risk_score = anomalous_percentage  # Assign AML risk score based on anomaly percentage
+    embeddings_df.index.name = 'Customer_ID'
 
-    # Aggregate customer risk scores
-    customer_risk_data = [{'Customer_ID': cid, 'AML_Risk_Score': data['anomalous'] / data['total']}
-                           for cid, data in customer_anomalies.items()]
+    # Check if file exists to decide on writing header
+    file_exists = os.path.isfile(csv_path)
 
-    return customer_risk_data
+    # Append new data to existing CSV file
+    embeddings_df.to_csv(csv_path, mode='a', header=not file_exists)
+
+    return embeddings_df
+"""
+
+import os
+import torch
+import numpy as np
+import pandas as pd
+import xgboost as xgb
+from collections import defaultdict, deque
+from scipy.sparse import csr_matrix
+import torch.optim as optim
+import torch.nn as nn
+
+def big_training(df, csv_path="customer_foundation_model.csv"):
+    transactions = preprocess_customer_data(df)
+
+    boolean_columns = ['Transaction_channel_Abm', 'Transaction_channel_Card', 'Transaction_channel_Cheque',
+                       'Transaction_channel_EFT', 'Transaction_channel_EMT', 'Transaction_channel_Wire']
+    numeric_columns = transactions.select_dtypes(include=[np.number]).columns.tolist()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    noise_dim = 100
+    transaction_type_dim = len(boolean_columns)
+    output_dim = len(numeric_columns)
+    num_epochs = 100
+    batch_size = 128
+    learning_rate = 0.0002
+    beta1 = 0.5
+    input_dim = noise_dim + transaction_type_dim
+
+    generator = Generator(noise_dim, transaction_type_dim, output_dim).to(device)
+    optimizer_g = optim.Adam(generator.parameters(), lr=learning_rate, betas=(beta1, 0.999))
+    criterion = nn.BCELoss()
+
+    customer_embeddings = defaultdict(list)
+
+    real_features = deque(maxlen=3000)
+    fake_features = deque(maxlen=3000)
+    labels = deque(maxlen=3000)
+
+    xgb_model = None
+    xgb_update_threshold = 2000  # Train when at least 2000 labeled samples accumulate
+
+    for epoch in range(num_epochs):
+        for i in range(0, len(transactions), batch_size):
+            end_idx = min(i + batch_size, len(transactions))
+            current_batch_size = end_idx - i
+            if current_batch_size != batch_size:
+                continue
+
+            real_data = torch.tensor(transactions.iloc[i:end_idx][numeric_columns].values, dtype=torch.float32).to(device)
+            transaction_types = csr_matrix(transactions.iloc[i:end_idx][boolean_columns].values)
+
+            z = torch.randn(current_batch_size, noise_dim).to(device)
+            fake_data = generator(z, torch.tensor(transaction_types.toarray(), dtype=torch.float32).to(device))
+
+            real_features.append(real_data.cpu().numpy())
+            fake_features.append(fake_data.detach().cpu().numpy())
+            labels.extend([1] * current_batch_size + [0] * current_batch_size)
+
+            # Train XGBoost dynamically when at least xgb_update_threshold new samples are available
+            if len(labels) >= xgb_update_threshold:
+                X = np.vstack(real_features + fake_features)
+                y = np.array(labels)
+                min_length = min(X.shape[0], y.shape[0])
+                X = X[:min_length]
+                y = y[:min_length]
+                dtrain = xgb.DMatrix(X, label=y)
+                xgb_model = xgb.train(
+                    {"objective": "binary:logistic", "eval_metric": "logloss"},
+                    dtrain,
+                    num_boost_round=50
+                )
+                labels.clear()  # Reset after training
+
+            optimizer_g.zero_grad()
+
+            if xgb_model:
+                fake_data_np = fake_data.detach().cpu().numpy()
+                dtest = xgb.DMatrix(fake_data_np)
+                xgb_predictions = xgb_model.predict(dtest)
+                xgb_predictions = torch.tensor(xgb_predictions, dtype=torch.float32, requires_grad=True).to(device).view(-1, 1)
+
+                g_loss = criterion(xgb_predictions, torch.ones(current_batch_size, 1).to(device))
+                g_loss.backward()
+                optimizer_g.step()
+
+            embeddings = real_data.detach().cpu().numpy()
+            for j in range(current_batch_size):
+                customer_id = transactions.iloc[i + j]['customer_id']
+                customer_embeddings[customer_id].append(embeddings[j])
+
+    # Compute mean embeddings per customer
+    final_embeddings = {cid: np.mean(np.vstack(embeds), axis=0) for cid, embeds in customer_embeddings.items()}
+    embeddings_df = pd.DataFrame.from_dict(final_embeddings, orient='index')
+    embeddings_df.index.name = 'Customer_ID'
+
+    # Save or update existing CSV
+    if os.path.isfile(csv_path):
+        existing_df = pd.read_csv(csv_path, index_col=0)
+        if existing_df.shape[0] != embeddings_df.shape[0]:
+            reduced_embeddings = embeddings_df.values  # Use raw embeddings when customer count changes
+        else:
+            reduced_embeddings = embeddings_df.values
+    else:
+        reduced_embeddings = embeddings_df.values  # No PCA, direct saving
+
+    reduced_df = pd.DataFrame(reduced_embeddings, index=embeddings_df.index)
+
+    # Save reduced embeddings
+    file_exists = os.path.isfile(csv_path)
+    reduced_df.to_csv(csv_path, mode='a', header=not file_exists)
+    return reduced_df
+
+
+
+
+
+
+

@@ -63,7 +63,7 @@ class Generator(nn.Module):
         return self.model(x)
 
 
-# Discriminator Class
+
 class Discriminator(nn.Module):
     """
     A Discriminator network for a Generative Adversarial Network (GAN).
@@ -80,29 +80,27 @@ class Discriminator(nn.Module):
     -------
     - Input: Concatenation of transaction data and transaction type vector.
     - Hidden Layers: Fully connected layers with LeakyReLU activation.
+    - Embedding Layer: A hidden layer for extracting embeddings (128 dimensions).
     - Output Layer: Sigmoid activation to output probability of data being real.
 
     Methods:
     --------
-    forward(data, transaction_types):
+    forward(data, transaction_types, return_embedding=False):
         Takes in transaction data and transaction type vector, concatenates them,
         and passes them through the network to determine real/fake probability.
+        Optionally, returns the extracted embeddings.
     """
 
-    def __init__(self, input_dim, transaction_type_dim):
+    def __init__(self, input_dim, transaction_type_dim, embedding_dim=128):
         super(Discriminator, self).__init__()
-        self.model = nn.Sequential(
-            nn.Linear(input_dim + transaction_type_dim, 512),
-            nn.LeakyReLU(0.2),
-            nn.Linear(512, 256),
-            nn.LeakyReLU(0.2),
-            nn.Linear(256, 128),
-            nn.LeakyReLU(0.2),
-            nn.Linear(128, 1),
-            nn.Sigmoid()  # Output probability (real/fake)
-        )
+        self.fc1 = nn.Linear(input_dim + transaction_type_dim, 512)
+        self.fc2 = nn.Linear(512, 256)
+        self.fc3 = nn.Linear(256, embedding_dim)  # Embedding layer
+        self.fc4 = nn.Linear(embedding_dim, 1)  # Output layer for classification
+        self.leaky_relu = nn.LeakyReLU(0.2)
+        self.sigmoid = nn.Sigmoid()
 
-    def forward(self, data, transaction_types):
+    def forward(self, data, transaction_types, return_embedding=False):
         """
         Forward pass for the Discriminator.
 
@@ -112,11 +110,20 @@ class Discriminator(nn.Module):
             A batch of transaction data (real or fake) (batch_size, input_dim).
         transaction_types : torch.Tensor
             A batch of one-hot encoded transaction type vectors (batch_size, transaction_type_dim).
+        return_embedding : bool, optional
+            If True, return both classification output and embeddings.
 
         Returns:
         --------
         torch.Tensor
             A batch of probabilities indicating whether the data is real (1) or fake (0).
+        torch.Tensor (optional)
+            A batch of extracted embeddings (batch_size, embedding_dim).
         """
-        x = torch.cat((data, transaction_types), dim=1)  # Concatenate real/fake data with transaction type info
-        return self.model(x)
+        x = torch.cat((data, transaction_types), dim=1)  # Concatenate transaction data + type
+        x = self.leaky_relu(self.fc1(x))
+        x = self.leaky_relu(self.fc2(x))
+        embeddings = self.leaky_relu(self.fc3(x))  # Extract embeddings
+        out = self.sigmoid(self.fc4(embeddings))  # Classification output
+
+        return (out, embeddings) if return_embedding else out
