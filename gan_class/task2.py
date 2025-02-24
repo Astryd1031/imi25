@@ -4,7 +4,9 @@ import pandas as pd
 from gan_class.big_training_gan import big_training
 from gan_class.small_training_gan import small_training
 """
-This is the code for customer representation task 
+This is the code for customer foundation model representation task. 
+Please note that the csv file will be created
+within the class structure.
 """
 # Define project root directory
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))

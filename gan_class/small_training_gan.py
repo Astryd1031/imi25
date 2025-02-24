@@ -1,4 +1,4 @@
-import torch.optim as optim
+
 from gan_class.gan_preprocess import preprocess_customer_data
 from gan_class.small_gan_class import Generator
 
