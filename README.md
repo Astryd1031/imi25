@@ -75,5 +75,13 @@ python task2.py
 ## Presentation slides
 [View the Google Slides Presentation](https://docs.google.com/presentation/d/1kyHFN2KrI7sT1FQ55Nc53pSxQnYuP64RvcN1Wwx422I/edit?usp=sharing)
 
+## Contributors
+
+Thanks to all the contributors who have made this project possible:
+
+- **Ariunzaya Bartsadgui** - [@Ariunzaya](https://github.com/Astryd1031)
+- **Shanhan Uppal** - [@Shahan](shahanuppal@gmail.com)
+- **Rohan S Nair** - [@cRohan](https://www.linkedin.com/in/rohansunilkumarnair/)
+  
 ## License
 This project is licensed under the MIT License.
