@@ -8,6 +8,9 @@ This project implements a Generative Adversarial Network (GAN) for anomaly detec
 - **GAN-based Anomaly Detection**: Uses a generator-discriminator architecture to model transaction distributions.
 - **XGBoost Integration**: Trains a fraud detection classifier using generated and real transaction data.
 - **Embeddings Storage**: Appends customer embeddings to a CSV file.
+## Poster 
+![Project Logo](bigdata.png)
+
 
 ## Installation
 Ensure you have Python installed. Then, install the required dependencies:
