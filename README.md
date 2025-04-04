@@ -10,7 +10,7 @@ This project implements a Generative Adversarial Network (GAN) for anomaly detec
 - **Embeddings Storage**: Appends customer embeddings to a CSV file.
 ## Poster 
 ![Project Logo](bigdata.png)
-
+(Poster by Shahan Uppal)
 
 ## Installation
 Ensure you have Python installed. Then, install the required dependencies:
